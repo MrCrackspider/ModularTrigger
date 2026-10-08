@@ -1,10 +1,35 @@
 ﻿
 #include "Modules/TriggerComponentModule_OverlapEvent.h"
 
+#include "Engine/World.h"
 #include "HierarchicalTriggerComponent.h"
+#include "TimerManager.h"
 
 
 void UTriggerComponentModule_OverlapEvent::OnBeginPlay()
+{
+	if (ActivationDelay > 0.0f)
+	{
+		if (UWorld* World = GetWorld())
+		{
+			World->GetTimerManager().SetTimer(ActivationTimerHandle, this, &ThisClass::ActivateOverlap, ActivationDelay, false);
+			return;
+		}
+	}
+
+	ActivateOverlap();
+}
+
+void UTriggerComponentModule_OverlapEvent::OnEndPlay()
+{
+	if (UWorld* World = GetWorld())
+	{
+		World->GetTimerManager().ClearTimer(ActivationTimerHandle);
+	}
+	SetOverlapEnabled(false);
+}
+
+void UTriggerComponentModule_OverlapEvent::ActivateOverlap()
 {
 	SetOverlapEnabled(true);
 	if (bUpdateOverlapsOnBeginPlay)
@@ -20,11 +45,6 @@ void UTriggerComponentModule_OverlapEvent::OnBeginPlay()
 			}
 		}
 	}
-}
-
-void UTriggerComponentModule_OverlapEvent::OnEndPlay()
-{
-	SetOverlapEnabled(false);
 }
 
 UPrimitiveComponent* UTriggerComponentModule_OverlapEvent::GetOverlapComponent() const
@@ -62,8 +82,8 @@ void UTriggerComponentModule_OverlapEvent::SetOverlapEnabled(bool NewEnabled)
 	{
 		if (NewEnabled)
 		{
-			Comp->OnComponentBeginOverlap.AddDynamic(this, &ThisClass::ReceiveComponentBeginOverlap);
-			Comp->OnComponentEndOverlap.AddDynamic(this, &ThisClass::ReceiveComponentEndOverlap);
+			Comp->OnComponentBeginOverlap.AddUniqueDynamic(this, &ThisClass::ReceiveComponentBeginOverlap);
+			Comp->OnComponentEndOverlap.AddUniqueDynamic(this, &ThisClass::ReceiveComponentEndOverlap);
 		}
 		else
 		{

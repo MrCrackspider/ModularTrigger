@@ -5,8 +5,9 @@
 #include "StructUtils/InstancedStruct.h"
 
 
-bool FFilterModuleEntry_Class::ActorPassesFilter(const AActor* OtherActor) const
+bool FFilterModuleEntry_Class::ContextPassesFilter(const FTriggerExecutionContext& Context) const
 {
+	const AActor* OtherActor = Context.GetOtherActor();
 	for (TSubclassOf<AActor> Class : Classes)
 	{
 		if (OtherActor->IsA(Class))
@@ -17,16 +18,16 @@ bool FFilterModuleEntry_Class::ActorPassesFilter(const AActor* OtherActor) const
 	return false;
 }
 
-bool FFilterModuleEntry_Player::ActorPassesFilter(const AActor* OtherActor) const
+bool FFilterModuleEntry_Player::ContextPassesFilter(const FTriggerExecutionContext& Context) const
 {
-	const APawn* PlayerPawn = Cast<APawn>(OtherActor);
-	
+	const APawn* PlayerPawn = Cast<APawn>(Context.GetOtherActor());
+
 	return PlayerPawn ? PlayerPawn->IsPlayerControlled() : false;
 }
 
-bool FFilterModuleEntry_ActorTags::ActorPassesFilter(const AActor* OtherActor) const
+bool FFilterModuleEntry_ActorTags::ContextPassesFilter(const FTriggerExecutionContext& Context) const
 {
-	const TArray<FName>& ActorTags = OtherActor->Tags;
+	const TArray<FName>& ActorTags = Context.GetOtherActor()->Tags;
 
 	for (FName Tag : Tags)
 	{
@@ -38,14 +39,19 @@ bool FFilterModuleEntry_ActorTags::ActorPassesFilter(const AActor* OtherActor) c
 	return false;
 }
 
-bool FFilterModuleEntry_ExactActors::ActorPassesFilter(const AActor* OtherActor) const
+bool FFilterModuleEntry_ExactActors::ContextPassesFilter(const FTriggerExecutionContext& Context) const
 {
-	return Targets.Contains(OtherActor);
+	return Targets.Contains(Context.GetOtherActor());
+}
+
+bool FFilterModuleEntry_EndOverlap::ContextPassesFilter(const FTriggerExecutionContext& Context) const
+{
+	return Context.IsEndOverlap();
 }
 
 void UTriggerComponentModule_Filter::OnTriggerEventReceived(FTriggerExecutionContext& TriggerExecutionContext)
 {
-	auto ActorPassesFiltration = [this](const AActor* Actor) -> bool
+	auto ContextPassesFiltration = [this](const FTriggerExecutionContext& Context) -> bool
 	{
 		if (Filters.IsEmpty())
 		{
@@ -56,7 +62,7 @@ void UTriggerComponentModule_Filter::OnTriggerEventReceived(FTriggerExecutionCon
 			if (Filter->IsValid())
 			{
 				const FFilterModuleEntry& FilterEntry = Filter->Get<FFilterModuleEntry>();
-				const bool bFilterPassed = FilterEntry(Actor);
+				const bool bFilterPassed = FilterEntry(Context);
 				if (bAllFiltersShouldBePassed ^ bFilterPassed)
 				{
 					return bFilterPassed;
@@ -70,7 +76,7 @@ void UTriggerComponentModule_Filter::OnTriggerEventReceived(FTriggerExecutionCon
 		return false;
 	};
 
-	if (!ActorPassesFiltration(TriggerExecutionContext.GetOtherActor()))
+	if (!ContextPassesFiltration(TriggerExecutionContext))
 	{
 		TriggerExecutionContext.SetPendingInterruption();
 	}

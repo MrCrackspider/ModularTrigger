@@ -3,6 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Engine/TimerHandle.h"
 #include "HierarchicalTriggerComponentModule.h"
 #include "TriggerComponentModule_OverlapEvent.generated.h"
 
@@ -32,7 +33,15 @@ public:
 	 */
 	UPROPERTY(EditAnywhere)
 	bool bUpdateOverlapsOnBeginPlay = true;
-	
+
+	/**
+	 * Delay in seconds after begin play before this module starts listening for overlaps.
+	 * 0 activates immediately. When bUpdateOverlapsOnBeginPlay is set, the initial overlap
+	 * sweep happens once the delay elapses.
+	 */
+	UPROPERTY(EditAnywhere, meta = (ClampMin = "0.0", ForceUnits = "s"))
+	float ActivationDelay = 0.0f;
+
 protected:
 	
 	/**
@@ -50,7 +59,10 @@ protected:
 	bool bOverlapOncePerAnyActor = false;
 	
 	void SetOverlapEnabled(bool NewEnabled);
-	
+
+	/** Enables overlap listening and, if requested, performs the initial overlap sweep. */
+	void ActivateOverlap();
+
 	UFUNCTION()
 	void ReceiveComponentBeginOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, 
 		UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult);
@@ -62,6 +74,9 @@ protected:
 	void HandleOverlap(UPrimitiveComponent* OverlappedComponent, UPrimitiveComponent* OtherComp, 
 		bool bEndOverlap, const FHitResult* SweepResult = nullptr);
 	
-	UPROPERTY()
+	UPROPERTY(Transient)
 	TSet<TObjectPtr<AActor>> OverlappedActors;
+
+	/** Timer used to defer activation by ActivationDelay seconds. */
+	FTimerHandle ActivationTimerHandle;
 };

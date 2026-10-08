@@ -2,6 +2,8 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Components/ActorComponent.h"
+#include "Misc/Guid.h"
 #include "HierarchicalTriggerComponent.generated.h"
 
 class UHierarchicalTriggerComponentModule;
@@ -16,15 +18,35 @@ public:
 	UHierarchicalTriggerComponent();
 
 	virtual void BeginPlay() override;
-
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
-	
+	virtual void Serialize(FArchive& Ar) override;
+	virtual void PostLoad() override;
+#if WITH_EDITOR
+	virtual void PostEditChangeChainProperty(FPropertyChangedChainEvent& PropertyChangedEvent) override;
+#endif
+
 	UFUNCTION(BlueprintPure, meta=(DeterminesOutputType = Class))
 	UHierarchicalTriggerComponentModule* FindModuleByClass(TSubclassOf<UHierarchicalTriggerComponentModule> Class, int32 MaxSearchDepth = -1) const;
-	
+
 	template<typename ObjType>
 	ObjType* FindModuleByClass() const;
-	
+
+	/**
+	 * Recursively finds the module carrying the given stable id anywhere in this component's tree.
+	 * @param InModuleId Stable identity to look for.
+	 * @return The matching module, or nullptr.
+	 */
+	UHierarchicalTriggerComponentModule* FindModuleByGuid(const FGuid& InModuleId) const;
+
+#if WITH_EDITOR
+	/**
+	 * Walks the whole module tree and guarantees the invariant "every module has a unique, non-zero ModuleId":
+	 * any module whose id is invalid or a duplicate of one already seen is reassigned a fresh id.
+	 * Editor-only authoring helper; runtime trusts the ids serialized with the asset.
+	 */
+	void EnsureModuleIds();
+#endif
+
 	UPROPERTY(EditAnywhere, Instanced, Category = "Trigger Component")
 	TArray<TObjectPtr<class UHierarchicalTriggerComponentModule>> Modules;
 };

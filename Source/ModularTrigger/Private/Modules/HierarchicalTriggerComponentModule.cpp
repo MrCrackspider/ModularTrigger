@@ -1,8 +1,7 @@
 ﻿
-
 #include "Modules/HierarchicalTriggerComponentModule.h"
 #include "HierarchicalTriggerComponent.h"
-#include "Engine/Engine.h"
+#include "HierarchicalTriggerModuleUtils.h"
 
 
 FTriggerExecutionContext::FTriggerExecutionContext(
@@ -52,33 +51,23 @@ UHierarchicalTriggerComponentModule* UHierarchicalTriggerComponentModule::GetOut
 	return GetTypedOuter<UHierarchicalTriggerComponentModule>();
 }
 
+void UHierarchicalTriggerComponentModule::Serialize(FArchive& Ar)
+{
+	Super::Serialize(Ar);
+	if (Ar.IsSaveGame())
+	{
+		FHierarchicalTriggerModuleUtils::SerializeSaveGame(Modules, Ar);
+	}
+}
+
 UHierarchicalTriggerComponentModule* UHierarchicalTriggerComponentModule::FindModuleByClass(TSubclassOf<UHierarchicalTriggerComponentModule> Class, int32 MaxSearchDepth) const
 {
-	for (TObjectPtr<UHierarchicalTriggerComponentModule> Module : Modules)
-	{
-		if (IsValid(Module))
-		{
-			if (Module.IsA(Class))
-			{
-				return Module;
-			}
+	return FHierarchicalTriggerModuleUtils::FindByClass(Modules, Class, MaxSearchDepth);
+}
 
-			if (MaxSearchDepth == 0)
-			{
-				return nullptr;
-			}
-			
-			if (UHierarchicalTriggerComponentModule* OutModule = Module->FindModuleByClass(Class, MaxSearchDepth < 0 ? MaxSearchDepth : --MaxSearchDepth))
-			{
-				if (OutModule)
-				{
-					return OutModule;
-				}
-			}
-		}
-	}
-	
-	return nullptr;
+UHierarchicalTriggerComponentModule* UHierarchicalTriggerComponentModule::FindModuleByGuid(const FGuid& InModuleId) const
+{
+	return FHierarchicalTriggerModuleUtils::FindByGuid(Modules, InModuleId);
 }
 
 void UHierarchicalTriggerComponentModule::PropagateEvent(FTriggerExecutionContext& TriggerExecutionContext)
@@ -94,25 +83,13 @@ void UHierarchicalTriggerComponentModule::PropagateEvent(FTriggerExecutionContex
 
 void UHierarchicalTriggerComponentModule::ReceiveBeginPlay()
 {
-	for (TObjectPtr<class UHierarchicalTriggerComponentModule> Module : Modules)
-	{
-		if (IsValid(Module))
-		{
-			Module->ReceiveBeginPlay();
-		}
-	}
+	FHierarchicalTriggerModuleUtils::ReceiveBeginPlay(Modules);
 	OnBeginPlay();
 }
 
 void UHierarchicalTriggerComponentModule::ReceiveEndPlay()
 {
-	for (TObjectPtr<class UHierarchicalTriggerComponentModule> Module : Modules)
-	{
-		if (IsValid(Module))
-		{
-			Module->ReceiveEndPlay();
-		}
-	}
+	FHierarchicalTriggerModuleUtils::ReceiveEndPlay(Modules);
 	OnEndPlay();
 }
 
@@ -133,17 +110,4 @@ void UHierarchicalTriggerComponentModule::ReceiveTriggerEvent(FTriggerExecutionC
 		bEnabled = false;
 		bChildrenEnabled = false;
 	}
-}
-
-void UTriggerComponentModule_DebugMessage::OnTriggerEventReceived(FTriggerExecutionContext& TriggerExecutionContext)
-{
-	const TCHAR* EventName = TriggerExecutionContext.IsEndOverlap() ? TEXT("EndOverlap") : TEXT("BeginOverlap");
-	const FString FinalMessage = FString::Printf(TEXT("[%s] %s"), EventName, *Message);
-
-	if (GEngine)
-	{
-		GEngine->AddOnScreenDebugMessage(-1, Duration, Color, FinalMessage);
-	}
-
-	UE_LOG(LogTemp, Log, TEXT("%s"), *FinalMessage);
 }

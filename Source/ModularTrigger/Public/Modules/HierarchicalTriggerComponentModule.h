@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "HierarchicalTriggerComponent.h"
+#include "Misc/Guid.h"
 #include "StructUtils/InstancedStructContainer.h"
 #include "UObject/Object.h"
 #include "HierarchicalTriggerComponentModule.generated.h"
@@ -112,33 +113,52 @@ public:
 	
 	UFUNCTION(BlueprintPure, meta=(DeterminesOutputType = Class))
 	UHierarchicalTriggerComponentModule* FindModuleByClass(TSubclassOf<UHierarchicalTriggerComponentModule> Class, int32 MaxSearchDepth = -1) const;
-	
+
 	template<typename ObjType>
-	ObjType* FindModuleByClass() const;
+	ObjType* FindModuleByClass(int32 MaxSearchDepth = -1) const;
+
+	/**
+	 * Recursively searches this module's subtree for a module carrying the given stable id.
+	 * @param InModuleId Stable identity to look for. Checks this module first, then descends into children.
+	 * @return The matching module, or nullptr.
+	 */
+	UHierarchicalTriggerComponentModule* FindModuleByGuid(const FGuid& InModuleId) const;
+
+	/** Stable identity of this module within its owning component's tree. @see FTriggerModuleReference. */
+	const FGuid& GetModuleId() const { return ModuleId; }
 	
 	virtual UWorld* GetWorld() const override;
+	virtual void Serialize(FArchive& Ar) override;
 
 	/**
 	 * Should this module react to incoming overlap event
 	 */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame)
 	uint8 bEnabled : 1 = true;
 
 	/**
 	 * Should children of this module receive incoming overlap event
 	 */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame)
 	uint8 bChildrenEnabled : 1 = true;
 
 	/**
 	 * Should this module and its children be deactivated after first overlap
 	 */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame)
 	uint8 bTriggerOnce : 1 = false;
 	
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Instanced)
 	TArray<TObjectPtr<UHierarchicalTriggerComponentModule>> Modules;
-	
+
+	/**
+	 * Stable identity assigned by the owning component and kept unique across its module tree.
+	 * Used by FTriggerModuleReference to point at this module regardless of sibling reordering.
+	 * Read-only in the editor; assigned/repaired by UHierarchicalTriggerComponent::EnsureModuleIds.
+	 */
+	UPROPERTY(VisibleAnywhere, AdvancedDisplay, Category = "Trigger Component")
+	FGuid ModuleId;
+
 protected:
 	
 	virtual void OnBeginPlay() {}
@@ -148,36 +168,16 @@ protected:
 	void PropagateEvent(FTriggerExecutionContext& TriggerExecutionContext);
 	
 private:
-	
+
 	friend UHierarchicalTriggerComponent;
+	friend struct FHierarchicalTriggerModuleUtils;
 	void ReceiveBeginPlay();
 	void ReceiveEndPlay();
 	void ReceiveTriggerEvent(FTriggerExecutionContext& TriggerExecutionContext);
 };
 
-UCLASS(DisplayName = "Debug Message")
-class MODULARTRIGGER_API UTriggerComponentModule_DebugMessage : public UHierarchicalTriggerComponentModule
-{
-	GENERATED_BODY()
-
-public:
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite)
-	FString Message = TEXT("Trigger fired");
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite)
-	float Duration = 2.0f;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite)
-	FColor Color = FColor::Green;
-
-protected:
-
-	virtual void OnTriggerEventReceived(FTriggerExecutionContext& TriggerExecutionContext) override;
-};
-
 template <typename ObjType>
-ObjType* UHierarchicalTriggerComponentModule::FindModuleByClass() const
+ObjType* UHierarchicalTriggerComponentModule::FindModuleByClass(int32 MaxSearchDepth) const
 {
-	return (ObjType*)FindModuleByClass(ObjType::StaticClass());
+	return (ObjType*)FindModuleByClass(ObjType::StaticClass(), MaxSearchDepth);
 }

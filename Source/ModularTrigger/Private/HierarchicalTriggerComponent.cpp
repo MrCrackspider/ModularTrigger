@@ -1,7 +1,12 @@
 
 #include "HierarchicalTriggerComponent.h"
 
+#include "HierarchicalTriggerModuleUtils.h"
 #include "Modules/HierarchicalTriggerComponentModule.h"
+
+#if WITH_EDITOR
+#include "UObject/UnrealType.h"
+#endif
 
 UHierarchicalTriggerComponent::UHierarchicalTriggerComponent()
 {
@@ -11,53 +16,84 @@ UHierarchicalTriggerComponent::UHierarchicalTriggerComponent()
 
 void UHierarchicalTriggerComponent::BeginPlay()
 {
-	for (TObjectPtr<class UHierarchicalTriggerComponentModule> Module : Modules)
-	{
-		if (IsValid(Module))
-		{
-			Module->ReceiveBeginPlay();
-		}
-	}
+	FHierarchicalTriggerModuleUtils::ReceiveBeginPlay(Modules);
 	Super::BeginPlay();
 }
 
 void UHierarchicalTriggerComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
-	for (TObjectPtr<class UHierarchicalTriggerComponentModule> Module : Modules)
-	{
-		if (IsValid(Module))
-		{
-			Module->ReceiveEndPlay();
-		}
-	}
+	FHierarchicalTriggerModuleUtils::ReceiveEndPlay(Modules);
 	Super::EndPlay(EndPlayReason);
 }
 
-// TODO: Remove copy from UHierarchicalTriggerComponentModule
-UHierarchicalTriggerComponentModule* UHierarchicalTriggerComponent::FindModuleByClass(TSubclassOf<UHierarchicalTriggerComponentModule> Class, int32 MaxSearchDepth) const
+void UHierarchicalTriggerComponent::Serialize(FArchive& Ar)
 {
-	for (TObjectPtr<UHierarchicalTriggerComponentModule> Module : Modules)
+	Super::Serialize(Ar);
+	if (Ar.IsSaveGame())
+	{
+		FHierarchicalTriggerModuleUtils::SerializeSaveGame(Modules, Ar);
+	}
+}
+
+void UHierarchicalTriggerComponent::PostLoad()
+{
+	Super::PostLoad();
+#if WITH_EDITOR
+	// Backfill/dedupe stable module ids for assets saved before they existed. Runtime trusts serialized ids.
+	EnsureModuleIds();
+#endif
+}
+
+#if WITH_EDITOR
+void UHierarchicalTriggerComponent::PostEditChangeChainProperty(FPropertyChangedChainEvent& PropertyChangedEvent)
+{
+	Super::PostEditChangeChainProperty(PropertyChangedEvent);
+	// Covers adding/pasting modules at any depth (nested instanced edits route here on the owning component).
+	EnsureModuleIds();
+}
+
+void UHierarchicalTriggerComponent::EnsureModuleIds()
+{
+	TSet<FGuid> SeenIds;
+
+	TArray<UHierarchicalTriggerComponentModule*> Stack;
+	for (const TObjectPtr<UHierarchicalTriggerComponentModule>& Module : Modules)
 	{
 		if (IsValid(Module))
 		{
-			if (Module.IsA(Class))
+			Stack.Add(Module);
+		}
+	}
+
+	while (Stack.Num() > 0)
+	{
+		UHierarchicalTriggerComponentModule* Module = Stack.Pop();
+
+		if (!Module->ModuleId.IsValid() || SeenIds.Contains(Module->ModuleId))
+		{
+			Module->ModuleId = FGuid::NewGuid();
+		}
+		SeenIds.Add(Module->ModuleId);
+
+		for (const TObjectPtr<UHierarchicalTriggerComponentModule>& Child : Module->Modules)
+		{
+			if (IsValid(Child))
 			{
-				return Module;
-			}
-			if (MaxSearchDepth == -1 || MaxSearchDepth > 0)
-			{
-				if (UHierarchicalTriggerComponentModule* OutModule = Module->FindModuleByClass(Class, MaxSearchDepth == -1 ? MaxSearchDepth : --MaxSearchDepth))
-				{
-					if (OutModule)
-					{
-						return OutModule;
-					}
-				}
+				Stack.Add(Child);
 			}
 		}
 	}
-	
-	return nullptr;
+}
+#endif
+
+UHierarchicalTriggerComponentModule* UHierarchicalTriggerComponent::FindModuleByGuid(const FGuid& InModuleId) const
+{
+	return FHierarchicalTriggerModuleUtils::FindByGuid(Modules, InModuleId);
+}
+
+UHierarchicalTriggerComponentModule* UHierarchicalTriggerComponent::FindModuleByClass(TSubclassOf<UHierarchicalTriggerComponentModule> Class, int32 MaxSearchDepth) const
+{
+	return FHierarchicalTriggerModuleUtils::FindByClass(Modules, Class, MaxSearchDepth);
 }
 
 
