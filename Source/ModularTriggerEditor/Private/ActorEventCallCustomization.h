@@ -3,6 +3,8 @@
 
 #include "CoreMinimal.h"
 #include "IPropertyTypeCustomization.h"
+#include "Input/Reply.h"
+#include "Layout/Visibility.h"
 
 class AActor;
 class IPropertyHandle;

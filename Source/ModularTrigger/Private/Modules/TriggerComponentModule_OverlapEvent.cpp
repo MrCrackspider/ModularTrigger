@@ -1,6 +1,7 @@
 ﻿
 #include "Modules/TriggerComponentModule_OverlapEvent.h"
 
+#include "Components/PrimitiveComponent.h"
 #include "Engine/World.h"
 #include "HierarchicalTriggerComponent.h"
 #include "TimerManager.h"
@@ -149,7 +150,12 @@ void UTriggerComponentModule_OverlapEvent::HandleOverlap(UPrimitiveComponent* Ov
 			return;
 		}
 		FTriggerExecutionContext TriggerExecutionContext{GetOwningComponent(), OverlappedComponent, OtherComp, bEndOverlap, SweepResult};
-		PropagateEvent(TriggerExecutionContext);
+		// A generator is the root of the dispatch, so its gate covers the whole event — same rule as anywhere
+		// else in the tree: a module decides about its own children only.
+		if (ShouldPropagateEvent(TriggerExecutionContext))
+		{
+			PropagateEvent(TriggerExecutionContext);
+		}
 		// TODO: wrap with ReceiveOverlapEvent?
 		if (bTriggerOnce)
 		{

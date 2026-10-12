@@ -1,4 +1,3 @@
-// Copyright Volga Studios. All rights reserved.
 
 #include "Modules/TriggerComponentModule_ActorOverlapEvent.h"
 
@@ -200,7 +199,12 @@ void UTriggerComponentModule_ActorOverlapEvent::HandleOverlap(
 
 	FTriggerExecutionContext TriggerExecutionContext{
 		OwningComponent, OverlappedComponent, OtherComponent, bEndOverlap, SweepResult};
-	PropagateEvent(TriggerExecutionContext);
+	// A generator is the root of the dispatch, so its gate covers the whole event — same rule as anywhere
+	// else in the tree: a module decides about its own children only.
+	if (ShouldPropagateEvent(TriggerExecutionContext))
+	{
+		PropagateEvent(TriggerExecutionContext);
+	}
 
 	if (bTriggerOnce)
 	{

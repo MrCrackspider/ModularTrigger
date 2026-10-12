@@ -1,5 +1,6 @@
 ﻿
 #include "Modules/HierarchicalTriggerComponentModule.h"
+#include "Components/PrimitiveComponent.h"
 #include "HierarchicalTriggerComponent.h"
 #include "HierarchicalTriggerModuleUtils.h"
 
@@ -12,28 +13,45 @@ FTriggerExecutionContext::FTriggerExecutionContext(
 {
 }
 
-void FTriggerExecutionContext::SetPendingInterruption()
+TNotNull<const AActor*> FTriggerExecutionContext::GetOtherActor() const
 {
-	bPendingInterruption = true;
+	return GetOtherComponent()->GetOwner();
 }
 
 void FTriggerExecutionContext::AddExecutionData(FConstStructView InData)
 {
-	bool bFound = false;
-	for (FStructView Data : ExecutionData)
+	if (!InData.IsValid())
 	{
+		return;
+	}
+
+	// Only the current scope is searched: finding the type in an outer scope has to append a shadowing value
+	// rather than write through to it, or a module would be able to change what its ancestors are reading.
+	for (int32 Index = ExecutionData.Num() - 1; Index >= CurrentScopeStart; --Index)
+	{
+		const FStructView Data = ExecutionData[Index];
 		if (Data.GetScriptStruct() == InData.GetScriptStruct())
 		{
 			Data.GetScriptStruct()->CopyScriptStruct(Data.GetMemory(), InData.GetMemory());
-			bFound = true;
-			break;
+			return;
 		}
 	}
 
-	if (!bFound)
-	{
-		ExecutionData.Append({ InData });
-	}
+	ExecutionData.Append({ InData });
+}
+
+FTriggerExecutionDataScope::FTriggerExecutionDataScope(FTriggerExecutionContext& InContext)
+	: Context(InContext), OuterScopeStart(InContext.CurrentScopeStart)
+{
+	Context.CurrentScopeStart = Context.ExecutionData.Num();
+}
+
+FTriggerExecutionDataScope::~FTriggerExecutionDataScope()
+{
+	// Everything this scope added sits at the end of the container, so shrinking back to where it started
+	// destroys exactly its own values and leaves the inherited ones untouched.
+	Context.ExecutionData.SetNum(Context.CurrentScopeStart);
+	Context.CurrentScopeStart = OuterScopeStart;
 }
 
 UHierarchicalTriggerComponent* UHierarchicalTriggerComponentModule::GetOwningComponent() const
@@ -72,6 +90,10 @@ UHierarchicalTriggerComponentModule* UHierarchicalTriggerComponentModule::FindMo
 
 void UHierarchicalTriggerComponentModule::PropagateEvent(FTriggerExecutionContext& TriggerExecutionContext)
 {
+	// These children share one data scope: what one of them writes is readable by the ones after it and by
+	// their subtrees, and goes away again once this list has been walked.
+	const FTriggerExecutionDataScope DataScope(TriggerExecutionContext);
+
 	for (TObjectPtr<UHierarchicalTriggerComponentModule> Module : Modules)
 	{
 		if (IsValid(Module))
@@ -99,12 +121,16 @@ void UHierarchicalTriggerComponentModule::ReceiveTriggerEvent(FTriggerExecutionC
 	{
 		OnTriggerEventReceived(TriggerExecutionContext);
 	}
-	
-	if (bChildrenEnabled && !TriggerExecutionContext.IsPendingInterruption())
+
+	// A module can only ever close the gate in front of its own children: there is no shared flag for it to
+	// set, so a module that rejects an event cannot affect the modules beside it.
+	const bool bGateOpen = !bEnabled || ShouldPropagateEvent(TriggerExecutionContext);
+
+	if (bChildrenEnabled && bGateOpen)
 	{
 		PropagateEvent(TriggerExecutionContext);
 	}
-	
+
 	if (bTriggerOnce)
 	{
 		bEnabled = false;

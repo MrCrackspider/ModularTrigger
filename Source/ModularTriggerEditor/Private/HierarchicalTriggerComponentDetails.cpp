@@ -92,6 +92,13 @@ namespace
 	/** Horizontal indent (in Slate units) applied per tree depth. */
 	constexpr float IndentPerDepth = 14.0f;
 
+	/**
+	 * ModuleId of the expanded module, per trigger component. Static so expansion survives the ForceRefresh
+	 * that recreates the customization, and so FHierarchicalTriggerComponentVisualizer can read which module
+	 * the user is editing without the two having to know about each other.
+	 */
+	TMap<FObjectKey, FGuid> GExpandedModules;
+
 	/** Class picker filter: concrete, instantiable subclasses of UHierarchicalTriggerComponentModule. */
 	class FModuleClassFilter : public IClassViewerFilter
 	{
@@ -577,8 +584,8 @@ FReply FHierarchicalTriggerComponentDetails::OnToggleExpand(TSharedPtr<FModuleTr
 {
 	if (Node.IsValid())
 	{
-		FViewState& State = GetViewState();
-		State.Selected = (State.Selected == Node->ModuleId) ? FGuid() : Node->ModuleId;
+		const bool bAlreadyExpanded = GetExpandedModuleId() == Node->ModuleId;
+		SetExpandedModuleId(bAlreadyExpanded ? FGuid() : Node->ModuleId);
 		RequestRefresh();
 	}
 	return FReply::Handled();
@@ -586,7 +593,7 @@ FReply FHierarchicalTriggerComponentDetails::OnToggleExpand(TSharedPtr<FModuleTr
 
 bool FHierarchicalTriggerComponentDetails::IsExpanded(const TSharedPtr<FModuleTreeNode>& Node) const
 {
-	return Node.IsValid() && Node->ModuleId.IsValid() && Node->ModuleId == GetViewState().Selected;
+	return Node.IsValid() && Node->ModuleId.IsValid() && Node->ModuleId == GetExpandedModuleId();
 }
 
 ECheckBoxState FHierarchicalTriggerComponentDetails::GetFlagState(TSharedPtr<FModuleTreeNode> Node, EModuleFlag Flag) const
@@ -710,7 +717,7 @@ void FHierarchicalTriggerComponentDetails::SetModuleClass(TSharedPtr<FModuleTree
 	NotifyModulesChanged(Slot.Owner, EPropertyChangeType::ValueSet);
 	Comp->EnsureModuleIds();
 
-	GetViewState().Selected = NewModule ? NewModule->GetModuleId() : FGuid();
+	SetExpandedModuleId(NewModule ? NewModule->GetModuleId() : FGuid());
 	RequestRefresh();
 }
 
@@ -731,10 +738,9 @@ void FHierarchicalTriggerComponentDetails::DeleteModule(TSharedPtr<FModuleTreeNo
 	NotifyModulesChanged(Slot.Owner, EPropertyChangeType::ArrayRemove);
 	Comp->EnsureModuleIds();
 
-	FViewState& State = GetViewState();
-	if (State.Selected == Node->ModuleId)
+	if (GetExpandedModuleId() == Node->ModuleId)
 	{
-		State.Selected = FGuid();
+		SetExpandedModuleId(FGuid());
 	}
 	RequestRefresh();
 }
@@ -765,7 +771,7 @@ void FHierarchicalTriggerComponentDetails::DuplicateModule(TSharedPtr<FModuleTre
 	NotifyModulesChanged(Slot.Owner, EPropertyChangeType::Duplicate);
 	Comp->EnsureModuleIds();
 
-	GetViewState().Selected = Duplicate->GetModuleId();
+	SetExpandedModuleId(Duplicate->GetModuleId());
 	RequestRefresh();
 }
 
@@ -845,7 +851,7 @@ void FHierarchicalTriggerComponentDetails::MakeParent(TSharedPtr<FModuleTreeNode
 	NotifyModulesChanged(ParentSlot.Owner, EPropertyChangeType::ValueSet);
 	Comp->EnsureModuleIds();
 
-	GetViewState().Selected = Module->GetModuleId();
+	SetExpandedModuleId(Module->GetModuleId());
 	RequestRefresh();
 }
 
@@ -961,7 +967,7 @@ void FHierarchicalTriggerComponentDetails::PasteModule(TSharedPtr<FModuleTreeNod
 	NotifyModulesChanged(Slot.Owner, EPropertyChangeType::ValueSet);
 	Comp->EnsureModuleIds();
 
-	GetViewState().Selected = Pasted->GetModuleId();
+	SetExpandedModuleId(Pasted->GetModuleId());
 	RequestRefresh();
 }
 
@@ -1071,11 +1077,27 @@ TArray<TObjectPtr<UHierarchicalTriggerComponentModule>>* FHierarchicalTriggerCom
 	return nullptr;
 }
 
-FHierarchicalTriggerComponentDetails::FViewState& FHierarchicalTriggerComponentDetails::GetViewState() const
+FGuid FHierarchicalTriggerComponentDetails::GetExpandedModuleId() const
 {
-	// Static so expansion survives the ForceRefresh that recreates this customization instance.
-	static TMap<FObjectKey, FViewState> ViewStates;
-	return ViewStates.FindOrAdd(ComponentKey);
+	const FGuid* Found = GExpandedModules.Find(ComponentKey);
+	return Found ? *Found : FGuid();
+}
+
+void FHierarchicalTriggerComponentDetails::SetExpandedModuleId(const FGuid& ModuleId)
+{
+	GExpandedModules.Add(ComponentKey, ModuleId);
+
+	// The viewport visualization can be filtered or highlighted by this, so it has to repaint with it.
+	if (GEditor)
+	{
+		GEditor->RedrawLevelEditingViewports();
+	}
+}
+
+FGuid FHierarchicalTriggerComponentDetails::GetExpandedModuleId(const UHierarchicalTriggerComponent* Component)
+{
+	const FGuid* Found = Component ? GExpandedModules.Find(FObjectKey(Component)) : nullptr;
+	return Found ? *Found : FGuid();
 }
 
 #undef LOCTEXT_NAMESPACE

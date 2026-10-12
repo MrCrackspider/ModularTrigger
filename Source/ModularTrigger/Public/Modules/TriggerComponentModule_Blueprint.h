@@ -1,5 +1,4 @@
-﻿// © Volga Studios. All rights reserved.
-
+﻿
 #pragma once
 
 #include "CoreMinimal.h"
@@ -16,21 +15,32 @@ class MODULARTRIGGER_API UTriggerComponentModule_Blueprint : public UHierarchica
 	GENERATED_BODY()
 	
 protected:
-	
+
+	//~ Begin UHierarchicalTriggerComponentModule interface
 	virtual void OnTriggerEventReceived(FTriggerExecutionContext& TriggerExecutionContext) override;
-	
+	virtual bool ShouldPropagateEvent(const FTriggerExecutionContext& TriggerExecutionContext) const override;
+	//~ End UHierarchicalTriggerComponentModule interface
+
 	UFUNCTION(BlueprintImplementableEvent, DisplayName = "On Trigger Event Received")
 	void BPOnTriggerEventReceived();
-	
+
 	UFUNCTION(BlueprintPure)
 	FInstancedStruct GetExecutionData(const UScriptStruct* Type);
-	
+
+	/**
+	 * Keeps the event from reaching this module's children. Affects nothing else: the modules beside this one
+	 * and their children still receive the event.
+	 */
 	UFUNCTION(BlueprintCallable)
+	void StopPropagationToChildren();
+
+	UFUNCTION(BlueprintCallable, meta = (DeprecatedFunction, DeprecationMessage =
+		"Use Stop Propagation To Children. Interruption only ever skipped this module's children, never the rest of the event."))
 	void SetPendingInterruption();
-	
+
 	UFUNCTION(BlueprintCallable)
 	void AddExecutionData(const FInstancedStruct& Data);
-	
+
 	//UPROPERTY()
 	FInstancedStructContainer InExecutionData;
 	
@@ -54,7 +64,8 @@ protected:
 	
 	UPROPERTY(Transient, BlueprintReadOnly)
 	uint8 bEndOverlap : 1 = false;
-	
+
+	/** Set by StopPropagationToChildren during the event, read by ShouldPropagateEvent right after it. */
 	UPROPERTY(Transient, BlueprintReadOnly)
-	uint8 bPendingInterruption : 1 = false;
+	uint8 bPropagationStopped : 1 = false;
 };

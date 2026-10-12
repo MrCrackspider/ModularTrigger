@@ -3,7 +3,10 @@
 
 #include "CoreMinimal.h"
 #include "IDetailCustomization.h"
+#include "Input/Reply.h"
+#include "Styling/SlateTypes.h"
 #include "UObject/ObjectKey.h"
+#include "UObject/ObjectMacros.h"
 
 class IDetailCategoryBuilder;
 class IDetailLayoutBuilder;
@@ -59,6 +62,12 @@ public:
 	static TSharedRef<IDetailCustomization> MakeInstance();
 
 	virtual void CustomizeDetails(IDetailLayoutBuilder& DetailBuilder) override;
+
+	/**
+	 * Stable id of the module currently expanded in this component's details panel, or an invalid guid when
+	 * none is. Read by the component visualizer to highlight — or to draw only — the module being edited.
+	 */
+	static FGuid GetExpandedModuleId(const UHierarchicalTriggerComponent* Component);
 
 private:
 	/** An addressable array element: the owning object, its Modules array and the index within it. */
@@ -126,13 +135,13 @@ private:
 	/** @return The module the clipboard currently points at, or nullptr when it holds something else. */
 	static UHierarchicalTriggerComponentModule* ResolveClipboardModule();
 
-	/** Per-component UI state kept in a static map so it survives the ForceRefresh that rebuilds this customization. */
-	struct FViewState
-	{
-		/** ModuleId of the single expanded (inline-details) module; invalid when nothing is expanded. */
-		FGuid Selected;
-	};
-	FViewState& GetViewState() const;
+	/**
+	 * ModuleId of the single expanded (inline-details) module for the component being customized; invalid when
+	 * nothing is expanded. Kept in a static map keyed by component so it survives the ForceRefresh that
+	 * rebuilds this customization, and so the viewport visualizer can read it. @see GetExpandedModuleId
+	 */
+	FGuid GetExpandedModuleId() const;
+	void SetExpandedModuleId(const FGuid& ModuleId);
 
 	TWeakObjectPtr<UHierarchicalTriggerComponent> Component;
 	FObjectKey ComponentKey;

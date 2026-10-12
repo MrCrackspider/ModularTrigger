@@ -1,4 +1,3 @@
-// © Volga Studios. All rights reserved.
 
 #pragma once
 
@@ -21,6 +20,12 @@ public:
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	FColor Color = FColor::Green;
+
+#if WITH_EDITOR
+	//~ Begin UHierarchicalTriggerComponentModule interface
+	virtual void DescribeVisualization(FTriggerVisualizationBuilder& Builder) const override;
+	//~ End UHierarchicalTriggerComponentModule interface
+#endif
 
 protected:
 

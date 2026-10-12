@@ -1,11 +1,14 @@
-﻿// © Volga Studios. All rights reserved.
-
-
+﻿
 #include "Modules/TriggerComponentModule_Blueprint.h"
+
+void UTriggerComponentModule_Blueprint::StopPropagationToChildren()
+{
+	bPropagationStopped = true;
+}
 
 void UTriggerComponentModule_Blueprint::SetPendingInterruption()
 {
-	bPendingInterruption = true;
+	StopPropagationToChildren();
 }
 
 FInstancedStruct UTriggerComponentModule_Blueprint::GetExecutionData(const UScriptStruct* Type)
@@ -14,9 +17,11 @@ FInstancedStruct UTriggerComponentModule_Blueprint::GetExecutionData(const UScri
 	{
 		return {};
 	}
-	
-	for (FConstStructView Data : InExecutionData)
+
+	// Back to front, so the nearest scope's value wins over one an outer scope holds of the same type.
+	for (int32 Index = InExecutionData.Num() - 1; Index >= 0; --Index)
 	{
+		const FConstStructView Data = InExecutionData[Index];
 		if (Data.GetScriptStruct() == Type)
 		{
 			FInstancedStruct OutData;
@@ -37,8 +42,17 @@ void UTriggerComponentModule_Blueprint::AddExecutionData(const FInstancedStruct&
 	OutExecutionData.Append(Structs);
 }
 
+bool UTriggerComponentModule_Blueprint::ShouldPropagateEvent(const FTriggerExecutionContext& TriggerExecutionContext) const
+{
+	// Set while the graph ran, and cleared when the next event starts rather than at the end of the last one,
+	// because this is asked after OnTriggerEventReceived has returned.
+	return !bPropagationStopped;
+}
+
 void UTriggerComponentModule_Blueprint::OnTriggerEventReceived(FTriggerExecutionContext& TriggerExecutionContext)
 {
+	bPropagationStopped = false;
+
 	OwningTriggerComponent = TriggerExecutionContext.GetOwningComponent();
 	OverlappedComponent = TriggerExecutionContext.GetOverlappedComponent();
 	OtherComponent = TriggerExecutionContext.GetOtherComponent();
@@ -50,10 +64,6 @@ void UTriggerComponentModule_Blueprint::OnTriggerEventReceived(FTriggerExecution
 	}
 	bEndOverlap = TriggerExecutionContext.IsEndOverlap();
 	BPOnTriggerEventReceived();
-	if (bPendingInterruption)
-	{
-		TriggerExecutionContext.SetPendingInterruption();
-	}
 	for (FConstStructView Data : OutExecutionData)
 	{
 		TriggerExecutionContext.AddExecutionData(Data);
@@ -64,5 +74,4 @@ void UTriggerComponentModule_Blueprint::OnTriggerEventReceived(FTriggerExecution
 	bHasSweepResult = false;
 	InExecutionData.Reset();
 	OutExecutionData.Reset();
-	bPendingInterruption = false;
 }

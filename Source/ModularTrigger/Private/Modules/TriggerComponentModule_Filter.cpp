@@ -1,9 +1,9 @@
 ﻿
 #include "Modules/TriggerComponentModule_Filter.h"
 
-#include "Misc/EnumerateRange.h"
+#include "GameFramework/Actor.h"
+#include "GameFramework/Pawn.h"
 #include "StructUtils/InstancedStruct.h"
-
 
 bool FFilterModuleEntry_Class::ContextPassesFilter(const FTriggerExecutionContext& Context) const
 {
@@ -49,35 +49,29 @@ bool FFilterModuleEntry_EndOverlap::ContextPassesFilter(const FTriggerExecutionC
 	return Context.IsEndOverlap();
 }
 
-void UTriggerComponentModule_Filter::OnTriggerEventReceived(FTriggerExecutionContext& TriggerExecutionContext)
+bool UTriggerComponentModule_Filter::ShouldPropagateEvent(const FTriggerExecutionContext& TriggerExecutionContext) const
 {
-	auto ContextPassesFiltration = [this](const FTriggerExecutionContext& Context) -> bool
-	{
-		if (Filters.IsEmpty())
-		{
-			return true;
-		}
-		for (TEnumerateRef<TInstancedStruct<FFilterModuleEntry>> Filter : EnumerateRange(Filters))
-		{
-			if (Filter->IsValid())
-			{
-				const FFilterModuleEntry& FilterEntry = Filter->Get<FFilterModuleEntry>();
-				const bool bFilterPassed = FilterEntry(Context);
-				if (bAllFiltersShouldBePassed ^ bFilterPassed)
-				{
-					return bFilterPassed;
-				}
-				if (Filter.GetIndex() == Filters.Num() - 1)
-				{
-					return bFilterPassed;
-				}
-			}
-		}
-		return false;
-	};
+	bool bAnyEntryEvaluated = false;
 
-	if (!ContextPassesFiltration(TriggerExecutionContext))
+	for (const TInstancedStruct<FFilterModuleEntry>& Filter : Filters)
 	{
-		TriggerExecutionContext.SetPendingInterruption();
+		// An unset row is an authoring mistake rather than a rejection — the base entry answers no to
+		// everything, so counting it would have the filter reject every event.
+		if (!Filter.IsValid())
+		{
+			continue;
+		}
+
+		bAnyEntryEvaluated = true;
+
+		const bool bEntryPassed = Filter.Get<FFilterModuleEntry>()(TriggerExecutionContext);
+		if (bEntryPassed != bAllFiltersShouldBePassed)
+		{
+			// A failure settles an all-of filter and a pass settles an any-of one.
+			return bEntryPassed;
+		}
 	}
+
+	// Every entry agreed with the mode, so the mode is the answer. A filter with nothing to say passes.
+	return !bAnyEntryEvaluated || bAllFiltersShouldBePassed;
 }

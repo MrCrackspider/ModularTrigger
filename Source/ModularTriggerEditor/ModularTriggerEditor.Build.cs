@@ -13,10 +13,13 @@ public class ModularTriggerEditor : ModuleRules
 				"ApplicationCore",
 				"Core",
 				"CoreUObject",
+				"DeveloperSettings",
 				"Engine",
 				"InputCore",
+				"Settings",
 				"Slate",
 				"SlateCore",
+				"ToolMenus",
 				"UnrealEd",
 				"PropertyEditor",
 				"ModularTrigger"

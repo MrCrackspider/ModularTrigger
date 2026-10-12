@@ -1,4 +1,3 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
 
 using UnrealBuildTool;
 
@@ -28,7 +27,10 @@ public class ModularTrigger : ModuleRules
 				"Core",
 				// ActorEventCall.h is a public header including StructUtils/PropertyBag.h and GameFramework/Actor.h.
 				"CoreUObject",
-				"Engine"
+				"Engine",
+				// Public: TriggerComponentModule_WorldConditionFilter.h holds an FWorldConditionQueryDefinition and
+				// the conditions in WorldConditions/ are public extension points.
+				"WorldConditions"
 				// ... add other public dependencies that you statically link with here ...
 			}
 			);
@@ -37,6 +39,10 @@ public class ModularTrigger : ModuleRules
 		PrivateDependencyModuleNames.AddRange(
 			new string[]
 			{
+				// TriggerComponentModule_PlayLevelSequence drives an ALevelSequenceActor's player.
+				// Both are engine runtime modules, not plugins, so nothing has to be enabled for this.
+				"LevelSequence",
+				"MovieScene",
 				"Slate",
 				"SlateCore",
 				// ... add private dependencies that you statically link with here ...
