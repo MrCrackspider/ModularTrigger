@@ -100,7 +100,7 @@ void FModularTriggerEditorModule::StartupModule()
 	}
 	else
 	{
-		PostEngineInitHandle = FCoreDelegates::OnPostEngineInit.AddRaw(
+		PostEngineInitHandle = FCoreDelegates::GetOnPostEngineInit().AddRaw(
 			this, &FModularTriggerEditorModule::RegisterComponentVisualizer);
 	}
 
@@ -128,7 +128,7 @@ void FModularTriggerEditorModule::ShutdownModule()
 
 	if (PostEngineInitHandle.IsValid())
 	{
-		FCoreDelegates::OnPostEngineInit.Remove(PostEngineInitHandle);
+		FCoreDelegates::GetOnPostEngineInit().Remove(PostEngineInitHandle);
 		PostEngineInitHandle.Reset();
 	}
 
