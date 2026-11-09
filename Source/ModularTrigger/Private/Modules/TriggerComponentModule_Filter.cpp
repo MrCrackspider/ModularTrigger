@@ -65,13 +65,19 @@ bool UTriggerComponentModule_Filter::ShouldPropagateEvent(const FTriggerExecutio
 		bAnyEntryEvaluated = true;
 
 		const bool bEntryPassed = Filter.Get<FFilterModuleEntry>()(TriggerExecutionContext);
+		TRIGGER_EXECUTION_MESSAGE(TriggerExecutionContext, TEXT("%s: %s"), *Filter.GetScriptStruct()->GetName(),
+			bEntryPassed ? TEXT("passed") : TEXT("rejected"));
 		if (bEntryPassed != bAllFiltersShouldBePassed)
 		{
 			// A failure settles an all-of filter and a pass settles an any-of one.
+			TRIGGER_REPORT_EXECUTION(TriggerExecutionContext, ETriggerExecutionResult::Succeeded,
+				TEXT("Filter evaluated: %s"), bEntryPassed ? TEXT("passed") : TEXT("rejected"));
 			return bEntryPassed;
 		}
 	}
 
 	// Every entry agreed with the mode, so the mode is the answer. A filter with nothing to say passes.
+	TRIGGER_REPORT_EXECUTION(TriggerExecutionContext, ETriggerExecutionResult::Succeeded,
+		TEXT("Filter evaluated: %s"), (!bAnyEntryEvaluated || bAllFiltersShouldBePassed) ? TEXT("passed") : TEXT("rejected"));
 	return !bAnyEntryEvaluated || bAllFiltersShouldBePassed;
 }

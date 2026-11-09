@@ -104,6 +104,7 @@ bool UTriggerComponentModule_WorldConditionFilter::ShouldPropagateEvent(const FT
 	const UTriggerWorldConditionSchema* Schema = GetSchema();
 	if (!Schema)
 	{
+		TRIGGER_REPORT_EXECUTION(TriggerExecutionContext, ETriggerExecutionResult::Failed, TEXT("World condition schema is unavailable"));
 		return false;
 	}
 
@@ -115,7 +116,11 @@ bool UTriggerComponentModule_WorldConditionFilter::ShouldPropagateEvent(const FT
 
 	const FWorldConditionContext Context(ConditionState, ContextData);
 
-	return Context.IsTrue();
+	const bool bPassed = Context.IsTrue();
+	TRIGGER_REPORT_EXECUTION(TriggerExecutionContext,
+		ConditionState.IsInitialized() ? ETriggerExecutionResult::Succeeded : ETriggerExecutionResult::Failed,
+		TEXT("World condition query %s; initialized=%d"), bPassed ? TEXT("passed") : TEXT("rejected"), ConditionState.IsInitialized());
+	return bPassed;
 }
 
 const UTriggerWorldConditionSchema* UTriggerComponentModule_WorldConditionFilter::GetSchema() const

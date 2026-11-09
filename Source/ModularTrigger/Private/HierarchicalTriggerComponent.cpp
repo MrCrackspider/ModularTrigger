@@ -96,4 +96,12 @@ UHierarchicalTriggerComponentModule* UHierarchicalTriggerComponent::FindModuleBy
 	return FHierarchicalTriggerModuleUtils::FindByClass(Modules, Class, MaxSearchDepth);
 }
 
+TArray<UHierarchicalTriggerComponentModule*> UHierarchicalTriggerComponent::FindModulesByClass(
+	TSubclassOf<UHierarchicalTriggerComponentModule> Class, int32 MaxSearchDepth) const
+{
+	TArray<UHierarchicalTriggerComponentModule*> Result;
+	FHierarchicalTriggerModuleUtils::FindAllByClass(Modules, Class, Result, MaxSearchDepth);
+	return Result;
+}
+
 

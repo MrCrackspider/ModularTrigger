@@ -1,5 +1,66 @@
 ﻿
 #include "Modules/TriggerComponentModule_Blueprint.h"
+#include "Templates/UnrealTemplate.h"
+
+void UTriggerComponentModule_Blueprint::ReportExecutionResult(ETriggerExecutionResult Result, const FString& Message)
+{
+	if (ActiveExecutionContext)
+	{
+		ActiveExecutionContext->ReportExecutionResult(Result, Message);
+	}
+}
+
+bool UTriggerComponentModule_Blueprint::IsExecutionTracing() const
+{
+	return ActiveExecutionContext && ActiveExecutionContext->IsExecutionTracing();
+}
+
+bool UTriggerComponentModule_Blueprint::HasExecutionContext() const
+{
+	return ActiveExecutionContext != nullptr;
+}
+
+const UHierarchicalTriggerComponent* UTriggerComponentModule_Blueprint::GetOwningTriggerComponent() const
+{
+	if (ActiveExecutionContext)
+	{
+		return ActiveExecutionContext->GetOwningComponent();
+	}
+	return nullptr;
+}
+
+const UPrimitiveComponent* UTriggerComponentModule_Blueprint::GetOverlappedComponent() const
+{
+	if (ActiveExecutionContext)
+	{
+		return ActiveExecutionContext->GetOverlappedComponent();
+	}
+	return nullptr;
+}
+
+const UPrimitiveComponent* UTriggerComponentModule_Blueprint::GetOtherComponent() const
+{
+	if (ActiveExecutionContext)
+	{
+		return ActiveExecutionContext->GetOtherComponent();
+	}
+	return nullptr;
+}
+
+FHitResult UTriggerComponentModule_Blueprint::GetSweepResult() const
+{
+	return HasSweepResult() ? *ActiveExecutionContext->GetSweepResult() : FHitResult{};
+}
+
+bool UTriggerComponentModule_Blueprint::HasSweepResult() const
+{
+	return ActiveExecutionContext && ActiveExecutionContext->HasSweepResult();
+}
+
+bool UTriggerComponentModule_Blueprint::IsEndOverlap() const
+{
+	return ActiveExecutionContext && ActiveExecutionContext->IsEndOverlap();
+}
 
 void UTriggerComponentModule_Blueprint::StopPropagationToChildren()
 {
@@ -11,17 +72,18 @@ void UTriggerComponentModule_Blueprint::SetPendingInterruption()
 	StopPropagationToChildren();
 }
 
-FInstancedStruct UTriggerComponentModule_Blueprint::GetExecutionData(const UScriptStruct* Type)
+FInstancedStruct UTriggerComponentModule_Blueprint::GetExecutionData(const UScriptStruct* Type) const
 {
-	if (!Type)
+	if (!ActiveExecutionContext || !Type)
 	{
 		return {};
 	}
 
 	// Back to front, so the nearest scope's value wins over one an outer scope holds of the same type.
-	for (int32 Index = InExecutionData.Num() - 1; Index >= 0; --Index)
+	const FInstancedStructContainer& ExecutionData = ActiveExecutionContext->GetExecutionData();
+	for (int32 Index = ExecutionData.Num() - 1; Index >= 0; --Index)
 	{
-		const FConstStructView Data = InExecutionData[Index];
+		const FConstStructView Data = ExecutionData[Index];
 		if (Data.GetScriptStruct() == Type)
 		{
 			FInstancedStruct OutData;
@@ -34,12 +96,11 @@ FInstancedStruct UTriggerComponentModule_Blueprint::GetExecutionData(const UScri
 
 void UTriggerComponentModule_Blueprint::AddExecutionData(const FInstancedStruct& Data)
 {
-	if (!Data.IsValid())
+	if (!ActiveExecutionContext || !Data.IsValid())
 	{
 		return;
 	}
-	TArray<FInstancedStruct> Structs{ Data };
-	OutExecutionData.Append(Structs);
+	ActiveExecutionContext->AddExecutionData(FConstStructView(Data));
 }
 
 bool UTriggerComponentModule_Blueprint::ShouldPropagateEvent(const FTriggerExecutionContext& TriggerExecutionContext) const
@@ -52,26 +113,6 @@ bool UTriggerComponentModule_Blueprint::ShouldPropagateEvent(const FTriggerExecu
 void UTriggerComponentModule_Blueprint::OnTriggerEventReceived(FTriggerExecutionContext& TriggerExecutionContext)
 {
 	bPropagationStopped = false;
-
-	OwningTriggerComponent = TriggerExecutionContext.GetOwningComponent();
-	OverlappedComponent = TriggerExecutionContext.GetOverlappedComponent();
-	OtherComponent = TriggerExecutionContext.GetOtherComponent();
-	bHasSweepResult = TriggerExecutionContext.HasSweepResult();
-	InExecutionData = TriggerExecutionContext.GetExecutionData();
-	if (bHasSweepResult)
-	{
-		SweepResult = *TriggerExecutionContext.GetSweepResult();
-	}
-	bEndOverlap = TriggerExecutionContext.IsEndOverlap();
+	TGuardValue<FTriggerExecutionContext*> ContextGuard(ActiveExecutionContext, &TriggerExecutionContext);
 	BPOnTriggerEventReceived();
-	for (FConstStructView Data : OutExecutionData)
-	{
-		TriggerExecutionContext.AddExecutionData(Data);
-	}
-	OwningTriggerComponent = nullptr;
-	OverlappedComponent = nullptr;
-	OtherComponent = nullptr;
-	bHasSweepResult = false;
-	InExecutionData.Reset();
-	OutExecutionData.Reset();
 }

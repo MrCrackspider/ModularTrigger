@@ -191,6 +191,11 @@ void FHierarchicalTriggerComponentDetails::CustomizeDetails(IDetailLayoutBuilder
 	// it should read as an inline block and let the outer details panel do the scrolling.
 	FPropertyEditorModule& PropertyEditor = FModuleManager::GetModuleChecked<FPropertyEditorModule>("PropertyEditor");
 	FDetailsViewArgs Args;
+	// The view is bound to an instanced module, so use its owning component to distinguish class defaults
+	// from a placed instance. The default is Show, which also exposes nested objects' EditDefaultsOnly fields.
+	Args.DefaultsOnlyVisibility = Comp->IsTemplate()
+		? EEditDefaultsOnlyNodeVisibility::Show
+		: EEditDefaultsOnlyNodeVisibility::Hide;
 	Args.bAllowSearch = false;
 	Args.bShowOptions = false;
 	Args.bHideSelectionTip = true;

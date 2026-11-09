@@ -31,6 +31,15 @@ public:
 	template<typename ObjType>
 	ObjType* FindModuleByClass() const;
 
+	/** Finds all matching modules, including subclasses, in depth-first order. Returns empty for a null class.
+	 * MaxSearchDepth: -1 = unlimited, 0 = root modules only, 1 = roots and their immediate children.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Trigger Component", meta = (DeterminesOutputType = "Class"))
+	TArray<UHierarchicalTriggerComponentModule*> FindModulesByClass(TSubclassOf<UHierarchicalTriggerComponentModule> Class, int32 MaxSearchDepth = -1) const;
+
+	template<typename ModuleType>
+	TArray<ModuleType*> FindModulesByClass(int32 MaxSearchDepth = -1) const;
+
 	/**
 	 * Recursively finds the module carrying the given stable id anywhere in this component's tree.
 	 * @param InModuleId Stable identity to look for.
@@ -55,4 +64,17 @@ template <typename ObjType>
 ObjType* UHierarchicalTriggerComponent::FindModuleByClass() const
 {
 	return (ObjType*)FindModuleByClass(ObjType::StaticClass());
+}
+
+template<typename ModuleType>
+TArray<ModuleType*> UHierarchicalTriggerComponent::FindModulesByClass(int32 MaxSearchDepth) const
+{
+	const TArray<UHierarchicalTriggerComponentModule*> Matches = FindModulesByClass(ModuleType::StaticClass(), MaxSearchDepth);
+	TArray<ModuleType*> Result;
+	Result.Reserve(Matches.Num());
+	for (UHierarchicalTriggerComponentModule* Module : Matches)
+	{
+		Result.Add(static_cast<ModuleType*>(Module));
+	}
+	return Result;
 }

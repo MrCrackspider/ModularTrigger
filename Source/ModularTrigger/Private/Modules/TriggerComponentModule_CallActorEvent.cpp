@@ -3,5 +3,8 @@
 
 void UTriggerComponentModule_CallActorEvent::OnTriggerEventReceived(FTriggerExecutionContext& TriggerExecutionContext)
 {
-	EventCall.Execute(TriggerExecutionContext.GetOwningComponent()->GetOwner());
+	const bool bDispatched = EventCall.Execute(TriggerExecutionContext.GetOwningComponent()->GetOwner());
+	TRIGGER_REPORT_EXECUTION(TriggerExecutionContext,
+		bDispatched ? ETriggerExecutionResult::Succeeded : ETriggerExecutionResult::Failed,
+		TEXT("Actor event %s: %s"), *EventCall.EventName.ToString(), bDispatched ? TEXT("dispatched") : TEXT("could not be dispatched"));
 }

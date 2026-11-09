@@ -141,26 +141,11 @@ void UTriggerComponentModule_OverlapEvent::HandleOverlap(UPrimitiveComponent* Ov
 		return;
 	}
 	
-	if (bChildrenEnabled)
+	UHierarchicalTriggerComponent* OwningComponent = GetOwningComponent();
+	if (!OwningComponent || !OverlappedComponent || !OtherComp)
 	{
-		UHierarchicalTriggerComponent* OwningComp = GetOwningComponent();
-		// When is it possible?
-		if (!OwningComp || !OverlappedComponent || !OtherComp)
-		{
-			return;
-		}
-		FTriggerExecutionContext TriggerExecutionContext{GetOwningComponent(), OverlappedComponent, OtherComp, bEndOverlap, SweepResult};
-		// A generator is the root of the dispatch, so its gate covers the whole event — same rule as anywhere
-		// else in the tree: a module decides about its own children only.
-		if (ShouldPropagateEvent(TriggerExecutionContext))
-		{
-			PropagateEvent(TriggerExecutionContext);
-		}
-		// TODO: wrap with ReceiveOverlapEvent?
-		if (bTriggerOnce)
-		{
-			bEnabled = false;
-			bChildrenEnabled = false;
-		}
+		return;
 	}
+	FTriggerExecutionContext TriggerExecutionContext{OwningComponent, OverlappedComponent, OtherComp, bEndOverlap, SweepResult};
+	DispatchGeneratedEvent(TriggerExecutionContext);
 }

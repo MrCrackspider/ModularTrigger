@@ -31,6 +31,33 @@ UHierarchicalTriggerComponentModule* FHierarchicalTriggerModuleUtils::FindByClas
 	return nullptr;
 }
 
+void FHierarchicalTriggerModuleUtils::FindAllByClass(const FModuleArray& Modules,
+	TSubclassOf<UHierarchicalTriggerComponentModule> Class, TArray<UHierarchicalTriggerComponentModule*>& OutModules,
+	int32 MaxSearchDepth)
+{
+	if (!Class)
+	{
+		return;
+	}
+
+	for (const TObjectPtr<UHierarchicalTriggerComponentModule>& Module : Modules)
+	{
+		if (!IsValid(Module))
+		{
+			continue;
+		}
+		if (Module->IsA(Class))
+		{
+			OutModules.Add(Module);
+		}
+		if (MaxSearchDepth != 0)
+		{
+			const int32 ChildDepth = MaxSearchDepth < 0 ? MaxSearchDepth : MaxSearchDepth - 1;
+			FindAllByClass(Module->Modules, Class, OutModules, ChildDepth);
+		}
+	}
+}
+
 UHierarchicalTriggerComponentModule* FHierarchicalTriggerModuleUtils::FindByGuid(const FModuleArray& Modules, const FGuid& ModuleId)
 {
 	if (!ModuleId.IsValid())

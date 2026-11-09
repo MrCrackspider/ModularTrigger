@@ -22,6 +22,14 @@ struct MODULARTRIGGER_API FHierarchicalTriggerModuleUtils
 	static UHierarchicalTriggerComponentModule* FindByClass(const FModuleArray& Modules,
 		TSubclassOf<UHierarchicalTriggerComponentModule> Class, int32 MaxSearchDepth = -1);
 
+	/**
+	 * Appends every matching module (including subclasses) in depth-first, parent-before-child order.
+	 * A matching parent does not stop descent. Null classes and invalid slots produce no matches.
+	 * @param MaxSearchDepth Levels below the supplied array to descend. <0 = unlimited, 0 = this level only.
+	 */
+	static void FindAllByClass(const FModuleArray& Modules, TSubclassOf<UHierarchicalTriggerComponentModule> Class,
+		TArray<UHierarchicalTriggerComponentModule*>& OutModules, int32 MaxSearchDepth = -1);
+
 	/** Depth-first search for the module carrying the given stable id (unlimited depth). */
 	static UHierarchicalTriggerComponentModule* FindByGuid(const FModuleArray& Modules, const FGuid& ModuleId);
 

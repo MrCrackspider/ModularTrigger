@@ -186,11 +186,6 @@ void UTriggerComponentModule_ActorOverlapEvent::HandleOverlap(
 		}
 	}
 
-	if (!bChildrenEnabled)
-	{
-		return;
-	}
-
 	UHierarchicalTriggerComponent* OwningComponent = GetOwningComponent();
 	if (!OwningComponent)
 	{
@@ -199,16 +194,5 @@ void UTriggerComponentModule_ActorOverlapEvent::HandleOverlap(
 
 	FTriggerExecutionContext TriggerExecutionContext{
 		OwningComponent, OverlappedComponent, OtherComponent, bEndOverlap, SweepResult};
-	// A generator is the root of the dispatch, so its gate covers the whole event — same rule as anywhere
-	// else in the tree: a module decides about its own children only.
-	if (ShouldPropagateEvent(TriggerExecutionContext))
-	{
-		PropagateEvent(TriggerExecutionContext);
-	}
-
-	if (bTriggerOnce)
-	{
-		bEnabled = false;
-		bChildrenEnabled = false;
-	}
+	DispatchGeneratedEvent(TriggerExecutionContext);
 }

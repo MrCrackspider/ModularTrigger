@@ -7,6 +7,7 @@
 #include "Misc/Guid.h"
 #include "StructUtils/InstancedStructContainer.h"
 #include "UObject/Object.h"
+#include "TriggerExecutionTrace.h"
 #include "HierarchicalTriggerComponentModule.generated.h"
 
 class FTriggerVisualizationBuilder;
@@ -15,8 +16,12 @@ struct FTriggerExecutionDataScope;
 
 struct FTriggerExecutionContext
 {
-	FTriggerExecutionContext(TNotNull<UHierarchicalTriggerComponent*> OwningTriggerComponent, TNotNull<UPrimitiveComponent*> OverlappedComponent,
+	MODULARTRIGGER_API FTriggerExecutionContext(TNotNull<UHierarchicalTriggerComponent*> OwningTriggerComponent, TNotNull<UPrimitiveComponent*> OverlappedComponent,
 	TNotNull<UPrimitiveComponent*> OtherComponent, bool bEndOverlap, const FHitResult* InSweepResult = nullptr);
+	MODULARTRIGGER_API ~FTriggerExecutionContext();
+
+	FTriggerExecutionContext(const FTriggerExecutionContext&) = delete;
+	FTriggerExecutionContext& operator=(const FTriggerExecutionContext&) = delete;
 
 protected:
 	/**
@@ -42,6 +47,12 @@ protected:
 	uint8 bEndOverlap : 1 = false;
 
 public:
+
+	MODULARTRIGGER_API bool IsExecutionTracing() const;
+	/** Diagnostics only: reporting never changes event propagation or gameplay results. */
+	MODULARTRIGGER_API void ReportExecutionResult(ETriggerExecutionResult Result, const FString& Message) const;
+	MODULARTRIGGER_API void ReportExecutionMessage(const FString& Message) const;
+	MODULARTRIGGER_API void ReportPropagation(bool bChildrenEnabled, bool bGateOpen) const;
 
 	const UWorld* GetWorld() const { return OwningTriggerComponent->GetWorld(); }
 	/** Every value visible from the module currently executing: its own scope and those of its ancestors. */
@@ -124,6 +135,10 @@ public:
 private:
 
 	friend struct FTriggerExecutionDataScope;
+#if UE_DEBUG_RECORDING_ENABLED
+	friend struct FTriggerModuleTraceScope;
+	TUniquePtr<FTriggerExecutionTrace> ExecutionTrace;
+#endif
 };
 
 /**
@@ -172,6 +187,15 @@ public:
 
 	template<typename ObjType>
 	ObjType* FindModuleByClass(int32 MaxSearchDepth = -1) const;
+
+	/** Finds all matching descendants, including subclasses, in depth-first order; excludes this module.
+	 * MaxSearchDepth: -1 = unlimited, 0 = immediate children only. Returns empty for a null class.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Trigger Component", meta = (DeterminesOutputType = "Class"))
+	TArray<UHierarchicalTriggerComponentModule*> FindModulesByClass(TSubclassOf<UHierarchicalTriggerComponentModule> Class, int32 MaxSearchDepth = -1) const;
+
+	template<typename ModuleType>
+	TArray<ModuleType*> FindModulesByClass(int32 MaxSearchDepth = -1) const;
 
 	/**
 	 * Recursively searches this module's subtree for a module carrying the given stable id.
@@ -248,6 +272,8 @@ protected:
 	virtual bool ShouldPropagateEvent(const FTriggerExecutionContext& TriggerExecutionContext) const { return true; }
 
 	void PropagateEvent(FTriggerExecutionContext& TriggerExecutionContext);
+	/** Entry point for generators, which do not receive their own event through ReceiveTriggerEvent. */
+	void DispatchGeneratedEvent(FTriggerExecutionContext& TriggerExecutionContext);
 	
 private:
 
@@ -262,4 +288,17 @@ template <typename ObjType>
 ObjType* UHierarchicalTriggerComponentModule::FindModuleByClass(int32 MaxSearchDepth) const
 {
 	return (ObjType*)FindModuleByClass(ObjType::StaticClass(), MaxSearchDepth);
+}
+
+template<typename ModuleType>
+TArray<ModuleType*> UHierarchicalTriggerComponentModule::FindModulesByClass(int32 MaxSearchDepth) const
+{
+	const TArray<UHierarchicalTriggerComponentModule*> Matches = FindModulesByClass(ModuleType::StaticClass(), MaxSearchDepth);
+	TArray<ModuleType*> Result;
+	Result.Reserve(Matches.Num());
+	for (UHierarchicalTriggerComponentModule* Module : Matches)
+	{
+		Result.Add(static_cast<ModuleType*>(Module));
+	}
+	return Result;
 }

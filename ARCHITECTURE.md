@@ -66,6 +66,15 @@ AActor
 | Module picker for `FTriggerModuleReference` | `ModularTriggerEditor/Private/TriggerModuleReferenceCustomization.{h,cpp}` |
 | Event picker + parameter bag sync | `ModularTriggerEditor/Private/ActorEventCallCustomization.{h,cpp}` |
 
+### Module searches
+
+Both the component and module expose `FindModulesByClass` to Blueprint and as a typed C++ template.
+It returns all valid matches including subclasses, in depth-first, parent-before-child array order,
+and continues beneath matching parents. On a component the search starts at roots; on a module it
+starts at children and excludes that module itself. `MaxSearchDepth` follows `FindModuleByClass`:
+negative = unlimited, zero = the starting array only. A null class returns an empty array.
+The shared traversal is `FHierarchicalTriggerModuleUtils::FindAllByClass`.
+
 ### Built-in modules
 
 | Class | Display name | Role |
@@ -76,7 +85,7 @@ AActor
 | `UTriggerComponentModule_WorldConditionFilter` | World Condition Filter | Same gate, expressed as a `FWorldConditionQueryDefinition`. |
 | `UTriggerComponentModule_CallActorEvent` | Call Actor Event | Invokes an `FActorEventCall`, context actor = trigger owner. |
 | `UTriggerComponentModule_PlayLevelSequence` | Play Level Sequence | Drives a placed `ALevelSequenceActor`'s player. Also a line-drawing visualization example. |
-| `UTriggerComponentModule_DebugMessage` | Debug Message | On-screen message + log; also the text-only visualization example. |
+| `UTriggerComponentModule_GatherExecutionData` | Gather Execution Data | Evaluates instanced providers in order and publishes their payloads into the current data scope. |
 | `UTriggerComponentModule_Blueprint` | Trigger Component Module Blueprintable | `Blueprintable, Abstract` base for BP modules. |
 
 ### The World Conditions filter
@@ -132,9 +141,14 @@ fix is upstream.
 
 ### Project-side modules (`Source/TheEmperorsOwnRuntime`)
 
-`TriggerModules/` holds `BroadcastDelegate`, `ForcePlayerTurn`, `ModifyGameplayTags`,
+`TriggerModules/` holds `BroadcastDelegate`, `DebugMessage`, `ForcePlayerTurn`, `ModifyGameplayTags`,
 `NiagaraActorAction`, `NotifyFlowAsset`, `StartFlowAsset`, `WorldStateMutation`, `WorldStateQuery`.
 `AI/Components/TriggerModules/` holds `GetTargets`.
+
+`UTriggerComponentModule_DebugMessage` lives in the project runtime module. It prints an on-screen
+message and a log entry, reports its execution result, and provides a text-only visualization example.
+The class redirect in `Config/DefaultEngine.ini` preserves assets authored against its former
+`/Script/ModularTrigger` class path.
 
 Project-side **Filter entries** all live in one pair, `TriggerModules/FilterModuleEntries.{h,cpp}` —
 `FFilterModuleEntry_PlayersVehicle` and `FFilterModuleEntry_WorldStateQuery`. Add new ones there rather
@@ -229,6 +243,19 @@ valid only for the duration of the dispatch, never store it.
 
 ### Execution data
 
+`UTriggerComponentModule_GatherExecutionData` owns a typed instanced array of
+`FTriggerExecutionDataProvider` subclasses (`Public/TriggerExecutionDataProvider.h`). Each provider's
+`Gather(const FTriggerExecutionContext&) const` returns an owned `FInstancedStruct`. Its payload type is
+independent of the provider type: a project-side registry provider can query a subsystem and return an
+`FActorsArray` without exposing an authored actor array. `FActorsArray` itself also derives from the
+provider base and returns a copy of its configured actors, so it can be picked directly. Existing
+consumers still read `GetExecutionDataPtr<FActorsArray>()`.
+
+Providers run on every event, in array order, and can read earlier providers' published results. Unset
+rows and invalid results publish nothing; an empty actor array is a valid result and shadows inherited
+targets. Provider configuration is not mutated. Payloads follow the existing sibling-list scope below;
+the gather handler must not open a local scope that closes before its children execute.
+
 `ExecutionData` is an `FInstancedStructContainer` and the only channel between modules — e.g. `GetTargets`
 writes an `FActorsArray` that a later module reads. It is **scoped like a block scope**, not flat:
 
@@ -259,6 +286,55 @@ component (and would then need `SaveGame` treatment); nothing needs it yet.
 
 Accessors are inline in the header except `GetOtherActor()`, which is out of line because
 `UPrimitiveComponent` is only forward declared there. Keep it that way.
+
+### Blueprint context access
+
+`UTriggerComponentModule_Blueprint` borrows a mutable context pointer only while
+`BPOnTriggerEventReceived()` runs. A `TGuardValue` restores the previous pointer after nested events on
+the same module, then restores null when the outermost handler returns. It exists in all builds, not
+only debug-recording builds. `HasExecutionContext()` lets graphs check this synchronous lifetime.
+
+The former mirrored `OwningTriggerComponent`, `OverlappedComponent`, `OtherComponent`, `SweepResult`,
+`bHasSweepResult` and `bEndOverlap` variables are replaced by `GetOwningTriggerComponent()`,
+`GetOverlappedComponent()`, `GetOtherComponent()`, `GetSweepResult()`, `HasSweepResult()` and
+`IsEndOverlap()`. Existing Blueprint variable nodes need replacing with these function calls.
+Outside the handler, object getters return null and value getters return defaults. Sweep results and
+requested execution payloads are returned by value; no reference into the context escapes to Blueprint.
+
+`GetExecutionData()` reads the live container, nearest scope first. `AddExecutionData()` writes to the
+context immediately, so a graph can read back its own writes; the old input/output container copies and
+deferred output flush are gone. A latent continuation has no active context and cannot publish data.
+The separate module-member `bPropagationStopped` is unchanged for now and still needs per-invocation
+state to handle reentrant propagation decisions correctly.
+
+## Execution recording
+
+When Visual Logger is recording, `FTriggerExecutionContext` allocates an independent
+`FTriggerExecutionTrace`. It survives execution-data scope cleanup and owns only copied identifiers,
+names and messages. The context's destructor emits the completed tree as one multiline `LogTriggerExecution`
+entry against the owning actor, with a process-wide event id so multiple events in one frame stay distinct.
+Recording storage and formatting are compiled behind UE 5.8's `UE_DEBUG_RECORDING_ENABLED`, not `WITH_EDITOR`.
+
+`FTriggerModuleTraceScope` records a visited module and restores the parent entry on exit. It keeps indices,
+not pointers into the growing trace array. `ReceiveTriggerEvent` records handler-disabled state separately
+from the existing gate decision; it never re-evaluates conditions for logging. A rejected filter is normal
+successful evaluation with rejected propagation. Modules without an explicit report remain `Unreported`.
+Unvisited descendants are explained on their blocking parent rather than traversed just for diagnostics.
+
+Both generators enter through `DispatchGeneratedEvent`, preserving their existing gate/once behavior while
+recording their source entry. Deduplicated overlaps and self-overlaps are still discarded before dispatch;
+an admitted event with children disabled is recorded as skipped. The generator's `bEnabled` behavior has
+not changed.
+
+Native handlers and gates use `TRIGGER_REPORT_EXECUTION(Context, Result, Format, ...)` and
+`TRIGGER_EXECUTION_MESSAGE(Context, Format, ...)`; these do not evaluate formatting arguments unless tracing.
+`Failed` is sticky within an entry so a later successful target cannot conceal an earlier failure.
+Blueprint modules expose `ReportExecutionResult` and `IsExecutionTracing`; the borrowed context is available
+only during the synchronous BP event, with its pointer restored after nested dispatch. Latent completion
+must be logged separately; a successful playback request does not assert that playback has completed.
+
+Automation coverage: `ModularTrigger.ExecutionTrace.HierarchyAndResults` checks parent restoration across
+array growth, independent result/propagation outcomes, retained messages and distinct event ids.
 
 ## Lifecycle
 
@@ -543,11 +619,9 @@ reason alone — do not read those errors as fallout from whatever you just chan
    `SerializeSaveGame` uses `if (Module)` instead of `IsValid(Module)`.
 5. `FTriggerModuleReference`'s resolve cache is never invalidated, and its no-arg `Resolve()` — the one
    Blueprint uses — cannot resolve a same-actor reference.
-6. `UTriggerComponentModule_Blueprint` mirrors the context into `UPROPERTY(Transient)` members around
-   `BPOnTriggerEventReceived()` and clears them afterwards. `InExecutionData` / `OutExecutionData` are
-   `FInstancedStructContainer` with their `UPROPERTY` **commented out**, so anything held there is
-   invisible to GC for the duration of the BP event. Also `OwningTriggerComponent`,
-   `OverlappedComponent`, `OtherComponent` are raw `const U…*` rather than `TObjectPtr`.
+6. `UTriggerComponentModule_Blueprint` still stores `bPropagationStopped` on the module. The borrowed
+   execution-context pointer is restored correctly after a nested event, but this propagation flag is
+   not; move the decision into per-invocation state before relying on reentrant Blueprint gates.
 7. `UTriggerComponentModule_DebugMessage` logs to `LogTemp`.
 8. `FModularTriggerModule::StartupModule` / `ShutdownModule` are still the empty wizard stubs.
 

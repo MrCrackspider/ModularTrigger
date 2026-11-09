@@ -25,7 +25,7 @@ protected:
 	void BPOnTriggerEventReceived();
 
 	UFUNCTION(BlueprintPure)
-	FInstancedStruct GetExecutionData(const UScriptStruct* Type);
+	FInstancedStruct GetExecutionData(const UScriptStruct* Type) const;
 
 	/**
 	 * Keeps the event from reaching this module's children. Affects nothing else: the modules beside this one
@@ -41,31 +41,43 @@ protected:
 	UFUNCTION(BlueprintCallable)
 	void AddExecutionData(const FInstancedStruct& Data);
 
-	//UPROPERTY()
-	FInstancedStructContainer InExecutionData;
-	
-	//UPROPERTY()
-	FInstancedStructContainer OutExecutionData;
-	
-	UPROPERTY(Transient, BlueprintReadOnly)
-	const UHierarchicalTriggerComponent* OwningTriggerComponent;
-	
-	UPROPERTY(Transient, BlueprintReadOnly)
-	const UPrimitiveComponent* OverlappedComponent;
-	
-	UPROPERTY(Transient, BlueprintReadOnly)
-	const UPrimitiveComponent* OtherComponent;
-	
-	UPROPERTY(Transient, BlueprintReadOnly)
-	FHitResult SweepResult;
-	
-	UPROPERTY(Transient, BlueprintReadOnly)
-	uint8 bHasSweepResult : 1 = false;
-	
-	UPROPERTY(Transient, BlueprintReadOnly)
-	uint8 bEndOverlap : 1 = false;
+	/** Reports diagnostics for the current synchronous event; does not control propagation. */
+	UFUNCTION(BlueprintCallable, Category = "Trigger Debug")
+	void ReportExecutionResult(ETriggerExecutionResult Result, const FString& Message);
+
+	UFUNCTION(BlueprintPure, Category = "Trigger Debug")
+	bool IsExecutionTracing() const;
+
+	/** Context access is available only during the synchronous On Trigger Event Received event. */
+	UFUNCTION(BlueprintPure, Category = "Trigger Context")
+	bool HasExecutionContext() const;
+
+	UFUNCTION(BlueprintPure, Category = "Trigger Context")
+	const UHierarchicalTriggerComponent* GetOwningTriggerComponent() const;
+
+	UFUNCTION(BlueprintPure, Category = "Trigger Context")
+	const UPrimitiveComponent* GetOverlappedComponent() const;
+
+	UFUNCTION(BlueprintPure, Category = "Trigger Context")
+	const UPrimitiveComponent* GetOtherComponent() const;
+
+	UFUNCTION(BlueprintPure, Category = "Trigger Context")
+	FHitResult GetSweepResult() const;
+
+	UFUNCTION(BlueprintPure, Category = "Trigger Context")
+	bool HasSweepResult() const;
+
+	UFUNCTION(BlueprintPure, Category = "Trigger Context")
+	bool IsEndOverlap() const;
 
 	/** Set by StopPropagationToChildren during the event, read by ShouldPropagateEvent right after it. */
 	UPROPERTY(Transient, BlueprintReadOnly)
 	uint8 bPropagationStopped : 1 = false;
+
+private:
+	friend class FTriggerBlueprintExecutionContextTest;
+
+	// Borrowed only while BPOnTriggerEventReceived is executing. Never retained by latent callbacks.
+	// TGuardValue restores the outer event's context after a nested invocation on this same module.
+	FTriggerExecutionContext* ActiveExecutionContext = nullptr;
 };

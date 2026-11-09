@@ -27,6 +27,7 @@ void UTriggerComponentModule_PlayLevelSequence::OnTriggerEventReceived(FTriggerE
 {
 	if (!IsValid(SequenceActor))
 	{
+		TRIGGER_REPORT_EXECUTION(TriggerExecutionContext, ETriggerExecutionResult::Failed, TEXT("Sequence actor is not assigned or is invalid"));
 		return;
 	}
 
@@ -35,6 +36,7 @@ void UTriggerComponentModule_PlayLevelSequence::OnTriggerEventReceived(FTriggerE
 	ULevelSequencePlayer* Player = SequenceActor->GetSequencePlayer();
 	if (!Player)
 	{
+		TRIGGER_REPORT_EXECUTION(TriggerExecutionContext, ETriggerExecutionResult::Failed, TEXT("Sequence player is not initialized"));
 		return;
 	}
 
@@ -44,14 +46,17 @@ void UTriggerComponentModule_PlayLevelSequence::OnTriggerEventReceived(FTriggerE
 		{
 		case ETriggerSequenceEndOverlapAction::Stop:
 			Player->Stop();
+			TRIGGER_REPORT_EXECUTION(TriggerExecutionContext, ETriggerExecutionResult::Succeeded, TEXT("Requested sequence stop"));
 			break;
 
 		case ETriggerSequenceEndOverlapAction::Pause:
 			Player->Pause();
+			TRIGGER_REPORT_EXECUTION(TriggerExecutionContext, ETriggerExecutionResult::Succeeded, TEXT("Requested sequence pause"));
 			break;
 
 		case ETriggerSequenceEndOverlapAction::Ignore:
 		default:
+			TRIGGER_REPORT_EXECUTION(TriggerExecutionContext, ETriggerExecutionResult::Skipped, TEXT("End overlap is configured to be ignored"));
 			break;
 		}
 		return;
@@ -59,6 +64,7 @@ void UTriggerComponentModule_PlayLevelSequence::OnTriggerEventReceived(FTriggerE
 
 	if (bIgnoreIfAlreadyPlaying && Player->IsPlaying())
 	{
+		TRIGGER_REPORT_EXECUTION(TriggerExecutionContext, ETriggerExecutionResult::Skipped, TEXT("Sequence is already playing"));
 		return;
 	}
 
@@ -84,6 +90,8 @@ void UTriggerComponentModule_PlayLevelSequence::OnTriggerEventReceived(FTriggerE
 	// end of the range, so setting it after the start is fine. Called unconditionally: 0 is the engine's "no
 	// loops", and without it a count left behind by an earlier looping play would still be in effect.
 	Player->PlayLooping(bLoop ? NumLoops : 0);
+	TRIGGER_REPORT_EXECUTION(TriggerExecutionContext, ETriggerExecutionResult::Succeeded,
+		TEXT("Requested playback: %s; reverse=%d; loops=%d"), *SequenceActor->GetName(), bPlayReversed, bLoop ? NumLoops : 0);
 }
 
 #if WITH_EDITOR
